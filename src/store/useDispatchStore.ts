@@ -3,6 +3,19 @@ import type { DispatchScenario, DispatchStrategy, DispatchPreview, WaterQuality,
 import { dispatchScenarios, pipelineConnections, initialTreatmentLines, initialEquipment } from '@/data/initialData';
 import { waterQualityStandards, simulationConfig } from '@/data/simulationConfig';
 import { generateId, clamp } from '@/utils/formatters';
+import { usePlantStore } from '@/store/usePlantStore';
+
+const lineToTankMap: Record<string, string> = {
+  'line-1': 'bio-tank-1',
+  'line-2': 'bio-tank-2',
+  'line-backup': 'bio-tank-backup',
+};
+
+const tankToLineMap: Record<string, string> = {
+  'bio-tank-1': 'line-1',
+  'bio-tank-2': 'line-2',
+  'bio-tank-backup': 'line-backup',
+};
 
 interface DispatchState extends DispatchPreview {
   scenarios: DispatchScenario[];
@@ -213,8 +226,10 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
     const { selectedStrategy } = get();
     if (!selectedStrategy) return;
 
-    const { usePlantStore } = require('@/store/usePlantStore');
     const plantState = usePlantStore.getState();
+    const totalInflow = selectedStrategy.lineActivation
+      .filter(a => a.active)
+      .reduce((sum, a) => sum + (a.loadRatio / 100) * 150, 0);
 
     const updatedLines = plantState.treatmentLines.map((line: TreatmentLine) => {
       const activation = selectedStrategy.lineActivation.find(a => a.lineId === line.id);
@@ -223,6 +238,7 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
           ...line,
           isActive: activation.active,
           currentLoad: activation.loadRatio,
+          loadPercentage: activation.loadRatio,
           isOverloaded: activation.loadRatio > simulationConfig.dispatch.overloadThreshold,
         };
       }
@@ -240,7 +256,10 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
     usePlantStore.setState({
       treatmentLines: updatedLines,
       equipment: updatedEquipment,
+      totalInletFlow: totalInflow,
     });
+
+    usePlantStore.getState().updatePipelineConnections();
 
     set({ isActive: false, scenario: null, strategies: [], selectedStrategy: null, previewFlowPaths: [] });
   },
@@ -264,21 +283,28 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
     if (!selectedStrategy) return [];
 
     const paths: [number, number, number][][] = [];
+    const activeTankIds = selectedStrategy.lineActivation
+      .filter(a => a.active)
+      .map(a => lineToTankMap[a.lineId])
+      .filter(Boolean);
 
-    selectedStrategy.lineActivation.forEach((activation) => {
-      if (activation.active) {
-        const pipes = pipelineConnections.filter(
-          (p) => p.type === 'normal' || (p.type === 'backup' && activation.lineId.includes('backup'))
-        );
-        pipes.forEach((pipe) => {
-          if (pipe.toUnit === activation.lineId || pipe.fromUnit === activation.lineId) {
-            const path: [number, number, number][] = [pipe.fromPosition];
-            path.push(...pipe.waypoints);
-            path.push(pipe.toPosition);
-            paths.push(path);
-          }
-        });
-      }
+    const backupActive = selectedStrategy.lineActivation.some(a => a.active && a.lineId === 'line-backup');
+
+    pipelineConnections.forEach((pipe) => {
+      if (pipe.type === 'emergency') return;
+
+      const isBackupPipe = pipe.type === 'backup';
+      const fromTankActive = activeTankIds.includes(pipe.fromUnit);
+      const toTankActive = activeTankIds.includes(pipe.toUnit);
+      const isMainPath = pipe.type === 'normal' && !['bio-tank-1', 'bio-tank-2', 'bio-tank-backup'].includes(pipe.toUnit);
+
+      if (isBackupPipe && !backupActive) return;
+      if (!isBackupPipe && !isMainPath && !fromTankActive && !toTankActive) return;
+
+      const path: [number, number, number][] = [pipe.fromPosition];
+      path.push(...pipe.waypoints);
+      path.push(pipe.toPosition);
+      paths.push(path);
     });
 
     return paths;

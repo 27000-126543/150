@@ -405,14 +405,38 @@ export const usePlantStore = create<PlantState>((set, get) => ({
 
   updatePipelineConnections: () => {
     const { treatmentLines } = get();
-    const backupLine = treatmentLines.find((l) => l.isBackup);
+    const activeTankIds = treatmentLines
+      .filter(l => l.isActive)
+      .map(l => {
+        if (l.id === 'line-1') return 'bio-tank-1';
+        if (l.id === 'line-2') return 'bio-tank-2';
+        if (l.id === 'line-backup') return 'bio-tank-backup';
+        return null;
+      })
+      .filter(Boolean) as string[];
+    const backupActive = treatmentLines.some(l => l.isBackup && l.isActive);
 
     set((state) => {
       const updatedConnections = state.pipelineConnections.map((conn) => {
-        if (conn.type === 'backup') {
-          return { ...conn, isActive: backupLine?.isActive ?? false };
+        const isBackup = conn.type === 'backup';
+        const isEmergency = conn.type === 'emergency';
+        const fromTankActive = activeTankIds.includes(conn.fromUnit);
+        const toTankActive = activeTankIds.includes(conn.toUnit);
+        const isMainPath = conn.type === 'normal' && !['bio-tank-1', 'bio-tank-2', 'bio-tank-backup'].includes(conn.toUnit);
+
+        if (isBackup) {
+          return { ...conn, isActive: backupActive };
         }
-        return conn;
+
+        if (isEmergency) {
+          return conn;
+        }
+
+        if (isMainPath) {
+          return { ...conn, isActive: true };
+        }
+
+        return { ...conn, isActive: fromTankActive || toTankActive };
       });
       return { pipelineConnections: updatedConnections };
     });

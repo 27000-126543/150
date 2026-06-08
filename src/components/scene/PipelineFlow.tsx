@@ -136,31 +136,50 @@ const PipeSegment = ({ start, end, color, type, isActive, showFlow = true }: Pip
 };
 
 const FlowArrow = ({
-  position,
-  direction,
+  start,
+  end,
   color,
   isActive,
+  offset = 0.5,
 }: {
-  position: [number, number, number];
-  direction: [number, number, number];
+  start: [number, number, number];
+  end: [number, number, number];
   color: string;
   isActive: boolean;
+  offset?: number;
 }) => {
   const groupRef = useRef<THREE.Group>(null);
+  const arrowHelperRef = useRef<THREE.ArrowHelper | null>(null);
+
+  const { direction, midPoint } = useMemo(() => {
+    const startVec = new THREE.Vector3(...start);
+    const endVec = new THREE.Vector3(...end);
+    const dir = endVec.clone().sub(startVec).normalize();
+    const mid = startVec.clone().add(endVec).multiplyScalar(0.5);
+    mid.y += offset;
+    return { direction: dir, midPoint: mid };
+  }, [start, end, offset]);
 
   useFrame((state) => {
     if (groupRef.current && isActive) {
-      groupRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 3) * 0.15;
-      groupRef.current.rotation.y = Math.atan2(direction[0], direction[2]);
+      groupRef.current.position.y = midPoint.y + Math.sin(state.clock.elapsedTime * 3) * 0.15;
     }
   });
 
-  const dir = new THREE.Vector3(...direction).normalize();
-  const arrowHelper = new THREE.ArrowHelper(dir, new THREE.Vector3(0, 0, 0), 0.8, new THREE.Color(color), 0.35, 0.2);
+  if (!arrowHelperRef.current) {
+    arrowHelperRef.current = new THREE.ArrowHelper(
+      direction,
+      new THREE.Vector3(0, 0, 0),
+      0.8,
+      new THREE.Color(color),
+      0.35,
+      0.2
+    );
+  }
 
   return (
-    <group ref={groupRef} position={position}>
-      <primitive object={arrowHelper} />
+    <group ref={groupRef} position={midPoint}>
+      <primitive object={arrowHelperRef.current} />
     </group>
   );
 };
@@ -204,16 +223,13 @@ const PipelineFlow = () => {
               />
             ))}
 
-            {conn.isActive && conn.flowDirection && (
+            {conn.isActive && (
               <FlowArrow
-                position={[
-                  (conn.fromPosition[0] + conn.toPosition[0]) / 2,
-                  (conn.fromPosition[1] + conn.toPosition[1]) / 2 + 0.5,
-                  (conn.fromPosition[2] + conn.toPosition[2]) / 2,
-                ]}
-                direction={conn.flowDirection}
+                start={conn.fromPosition}
+                end={conn.toPosition}
                 color={color}
                 isActive={conn.isActive}
+                offset={0.5}
               />
             )}
           </group>
@@ -233,14 +249,11 @@ const PipelineFlow = () => {
             />
           ))}
           <FlowArrow
-            position={[
-              (backupLine.switchPath[0][0] + backupLine.switchPath[backupLine.switchPath.length - 1][0]) / 2,
-              2.5,
-              (backupLine.switchPath[0][2] + backupLine.switchPath[backupLine.switchPath.length - 1][2]) / 2,
-            ]}
-            direction={[1, 0, 0]}
+            start={backupLine.switchPath[0]}
+            end={backupLine.switchPath[backupLine.switchPath.length - 1]}
             color="#34c759"
             isActive={true}
+            offset={1}
           />
         </group>
       )}
@@ -260,14 +273,11 @@ const PipelineFlow = () => {
             ))}
             {dosing.pipelinePath.length > 1 && (
               <FlowArrow
-                position={[
-                  dosing.pipelinePath[dosing.pipelinePath.length - 1][0],
-                  dosing.pipelinePath[dosing.pipelinePath.length - 1][1] + 1,
-                  dosing.pipelinePath[dosing.pipelinePath.length - 1][2],
-                ]}
-                direction={[0, 0, 1]}
+                start={dosing.pipelinePath[0]}
+                end={dosing.pipelinePath[dosing.pipelinePath.length - 1]}
                 color="#ff3b30"
                 isActive={true}
+                offset={1}
               />
             )}
           </group>

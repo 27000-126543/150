@@ -193,15 +193,13 @@ const DispatchPanel = ({ onClose }: DispatchPanelProps) => {
   };
 
   const handleGenerateStrategies = () => {
-    if (!scenario) {
-      const custom: DispatchScenario = {
-        id: 'custom',
-        name: '自定义场景',
-        ...customScenario,
-        description: '用户自定义调度场景',
-      };
-      setScenario(custom);
-    }
+    const currentScenario: DispatchScenario = {
+      id: scenario?.id || 'custom',
+      name: scenario?.name || '自定义场景',
+      ...customScenario,
+      description: scenario?.description || '用户自定义调度场景',
+    };
+    setScenario(currentScenario);
     generateStrategies();
   };
 
