@@ -17,6 +17,7 @@ interface PlantState {
   simulationSpeed: number;
   isSimulationRunning: boolean;
   totalPowerConsumption: number;
+  totalInletFlow: number;
   setSelectedUnitId: (id: string | null) => void;
   updateWaterQuality: () => void;
   updateEquipment: () => void;
@@ -65,6 +66,7 @@ export const usePlantStore = create<PlantState>((set, get) => ({
   simulationSpeed: 1,
   isSimulationRunning: true,
   totalPowerConsumption: initialEquipment.reduce((sum, eq) => sum + eq.powerConsumption, 0),
+  totalInletFlow: initialProcessUnits.find((u) => u.type === 'inlet')?.outletWater.flow || 0,
 
   setSelectedUnitId: (id) => set({ selectedUnitId: id }),
 
@@ -240,20 +242,21 @@ export const usePlantStore = create<PlantState>((set, get) => ({
 
     const updatedLines = treatmentLines.map((line) => {
       if (!line.isActive) {
-        return { ...line, currentLoad: 0, isOverloaded: false };
+        return { ...line, currentLoad: 0, loadPercentage: 0, isOverloaded: false };
       }
 
-      const currentLoad = (flowPerLine / line.capacity) * 100;
-      const isOverloaded = currentLoad > simulationConfig.dispatch.overloadThreshold;
+      const loadPercentage = (flowPerLine / line.capacity) * 100;
+      const isOverloaded = loadPercentage > simulationConfig.dispatch.overloadThreshold;
 
       return {
         ...line,
-        currentLoad: clamp(currentLoad, 0, 120),
+        currentLoad: clamp(loadPercentage, 0, 120),
+        loadPercentage: clamp(loadPercentage, 0, 120),
         isOverloaded,
       };
     });
 
-    set({ treatmentLines: updatedLines });
+    set({ treatmentLines: updatedLines, totalInletFlow: totalFlow });
   },
 
   checkEmergencyConditions: () => {
@@ -304,10 +307,12 @@ export const usePlantStore = create<PlantState>((set, get) => ({
 
     const updatedLines = treatmentLines.map((l) => {
       if (l.id === backupLine.id) {
-        return { ...l, isActive: true, currentLoad: overloadedLine.currentLoad * 0.5 };
+        const newLoad = overloadedLine.currentLoad * 0.5;
+        return { ...l, isActive: true, currentLoad: newLoad, loadPercentage: newLoad };
       }
       if (l.id === overloadedLine.id) {
-        return { ...l, currentLoad: overloadedLine.currentLoad * 0.5, isOverloaded: false };
+        const newLoad = overloadedLine.currentLoad * 0.5;
+        return { ...l, currentLoad: newLoad, loadPercentage: newLoad, isOverloaded: false };
       }
       return l;
     });
@@ -328,7 +333,9 @@ export const usePlantStore = create<PlantState>((set, get) => ({
     if (!eq || eq.maintenanceOrder) return;
 
     const spareParts = sparePartsData[eq.type] || [];
-    const lowStockAlert = spareParts.some((sp) => sp.currentStock < sp.quantity);
+    const lowStockAlert = spareParts
+      .filter((sp) => sp.currentStock < sp.quantity)
+      .map((sp) => sp.name);
 
     const order: MaintenanceOrder = {
       id: generateId(),
@@ -365,7 +372,8 @@ export const usePlantStore = create<PlantState>((set, get) => ({
     set((state) => {
       const updatedEquipment = state.equipment.map((e) => {
         if (e.id === equipmentId && e.maintenanceOrder) {
-          const newStatus = progress >= 100 ? 'completed' : progress > 0 ? 'in_progress' : 'pending';
+          const newStatus: 'pending' | 'in_progress' | 'completed' =
+            progress >= 100 ? 'completed' : progress > 0 ? 'in_progress' : 'pending';
           return {
             ...e,
             maintenanceOrder: {
@@ -381,7 +389,8 @@ export const usePlantStore = create<PlantState>((set, get) => ({
 
       const updatedOrders = state.maintenanceOrders.map((o) => {
         if (o.equipmentId === equipmentId) {
-          const newStatus = progress >= 100 ? 'completed' : progress > 0 ? 'in_progress' : 'pending';
+          const newStatus: 'pending' | 'in_progress' | 'completed' =
+            progress >= 100 ? 'completed' : progress > 0 ? 'in_progress' : 'pending';
           return { ...o, progress, status: newStatus, notes: notes || o.notes };
         }
         return o;

@@ -14,7 +14,6 @@ import {
   Package,
   User,
   Calendar,
-  Progress,
 } from 'lucide-react';
 import { usePlantStore } from '@/store/usePlantStore';
 import { formatHours, formatNumber, formatDateTime } from '@/utils/formatters';

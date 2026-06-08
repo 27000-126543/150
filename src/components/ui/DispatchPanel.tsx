@@ -157,7 +157,11 @@ const StrategyCard = ({
   );
 };
 
-const DispatchPanel = () => {
+interface DispatchPanelProps {
+  onClose?: () => void;
+}
+
+const DispatchPanel = ({ onClose }: DispatchPanelProps) => {
   const {
     isActive,
     scenario,

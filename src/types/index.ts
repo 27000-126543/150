@@ -57,7 +57,7 @@ export interface MaintenanceOrder {
   assignee: string;
   progress: number;
   notes: string;
-  lowStockAlert: boolean;
+  lowStockAlert: string[];
 }
 
 export interface MaintenanceRecord {
@@ -122,9 +122,21 @@ export interface ApprovalRequest {
 }
 
 export interface PurchaseRecord {
+  id: string;
   quantity: number;
   date: Date;
   status: 'pending' | 'ordered' | 'completed' | 'received';
+  unitPrice: number;
+}
+
+export interface PurchaseRequest {
+  id: string;
+  chemicalId: string;
+  chemicalName: string;
+  quantity: number;
+  createdAt: Date;
+  status: 'pending' | 'ordered' | 'received';
+  estimatedArrivalDate?: string;
 }
 
 export interface ChemicalInventory {
@@ -138,6 +150,7 @@ export interface ChemicalInventory {
   unitPrice: number;
   purchaseRequest?: {
     id: string;
+    chemicalName: string;
     quantity: number;
     createdAt: Date;
     status: 'pending' | 'ordered' | 'received';
@@ -161,6 +174,7 @@ export interface TreatmentLine {
   name: string;
   capacity: number;
   currentLoad: number;
+  loadPercentage: number;
   isActive: boolean;
   isBackup: boolean;
   isOverloaded: boolean;

@@ -301,8 +301,8 @@ export const initialInventory: ChemicalInventory[] = [
     unit: 'kg',
     unitPrice: 3.5,
     purchaseHistory: [
-      { quantity: 2000, date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), status: 'completed' },
-      { quantity: 1500, date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000), status: 'completed' },
+      { id: 'pur-pac-1', quantity: 2000, date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), status: 'completed', unitPrice: 3.5 },
+      { id: 'pur-pac-2', quantity: 1500, date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000), status: 'completed', unitPrice: 3.4 },
     ],
   },
   {
@@ -315,7 +315,7 @@ export const initialInventory: ChemicalInventory[] = [
     unit: 'kg',
     unitPrice: 15,
     purchaseHistory: [
-      { quantity: 1000, date: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000), status: 'completed' },
+      { id: 'pur-pam-1', quantity: 1000, date: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000), status: 'completed', unitPrice: 15 },
     ],
   },
   {
@@ -328,8 +328,8 @@ export const initialInventory: ChemicalInventory[] = [
     unit: 'kg',
     unitPrice: 4.2,
     purchaseHistory: [
-      { quantity: 5000, date: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000), status: 'completed' },
-      { quantity: 3000, date: new Date(Date.now() - 80 * 24 * 60 * 60 * 1000), status: 'completed' },
+      { id: 'pur-carbon-1', quantity: 5000, date: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000), status: 'completed', unitPrice: 4.2 },
+      { id: 'pur-carbon-2', quantity: 3000, date: new Date(Date.now() - 80 * 24 * 60 * 60 * 1000), status: 'completed', unitPrice: 4.0 },
     ],
   },
   {
@@ -342,7 +342,7 @@ export const initialInventory: ChemicalInventory[] = [
     unit: 'L',
     unitPrice: 2.8,
     purchaseHistory: [
-      { quantity: 2000, date: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000), status: 'completed' },
+      { id: 'pur-disinfectant-1', quantity: 2000, date: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000), status: 'completed', unitPrice: 2.8 },
     ],
   },
 ];
@@ -380,6 +380,7 @@ export const initialTreatmentLines: TreatmentLine[] = [
     name: '1#处理线',
     capacity: 150,
     currentLoad: 80,
+    loadPercentage: 80,
     isActive: true,
     isBackup: false,
     isOverloaded: false,
@@ -389,6 +390,7 @@ export const initialTreatmentLines: TreatmentLine[] = [
     name: '2#处理线',
     capacity: 150,
     currentLoad: 83,
+    loadPercentage: 83,
     isActive: true,
     isBackup: false,
     isOverloaded: false,
@@ -398,6 +400,7 @@ export const initialTreatmentLines: TreatmentLine[] = [
     name: '备用处理线',
     capacity: 150,
     currentLoad: 0,
+    loadPercentage: 0,
     isActive: false,
     isBackup: true,
     isOverloaded: false,
