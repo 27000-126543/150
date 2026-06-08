@@ -5,16 +5,16 @@ import { waterQualityStandards, simulationConfig } from '@/data/simulationConfig
 import { generateId, clamp } from '@/utils/formatters';
 import { usePlantStore } from '@/store/usePlantStore';
 
+const lineToBlowerMap: Record<string, string> = {
+  'line-1': 'blower-1',
+  'line-2': 'blower-2',
+  'line-backup': 'blower-3',
+};
+
 const lineToTankMap: Record<string, string> = {
   'line-1': 'bio-tank-1',
   'line-2': 'bio-tank-2',
   'line-backup': 'bio-tank-backup',
-};
-
-const tankToLineMap: Record<string, string> = {
-  'bio-tank-1': 'line-1',
-  'bio-tank-2': 'line-2',
-  'bio-tank-backup': 'line-backup',
 };
 
 interface DispatchState extends DispatchPreview {
@@ -245,18 +245,50 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
       return line;
     });
 
+    const activeLineIds = selectedStrategy.lineActivation.filter(a => a.active).map(a => a.lineId);
+
     const updatedEquipment = plantState.equipment.map((eq: Equipment) => {
-      const freqConfig = selectedStrategy.aerationFrequency.find(f => f.blowerId === eq.id);
-      if (freqConfig) {
-        return { ...eq, frequency: freqConfig.frequency };
+      if (eq.type === 'blower') {
+        const blowerLineId = Object.keys(lineToBlowerMap).find(k => lineToBlowerMap[k] === eq.id);
+        const isLineActive = blowerLineId ? activeLineIds.includes(blowerLineId) : false;
+        const freqConfig = selectedStrategy.aerationFrequency.find(f => f.blowerId === eq.id);
+
+        if (isLineActive && freqConfig) {
+          return {
+            ...eq,
+            status: 'running' as const,
+            frequency: freqConfig.frequency,
+          };
+        } else {
+          return {
+            ...eq,
+            status: 'standby' as const,
+            frequency: 0,
+          };
+        }
       }
       return eq;
+    });
+
+    const carbonDosing = selectedStrategy.chemicalDosing.find(d => d.chemicalId === 'carbon');
+    const pacDosing = selectedStrategy.chemicalDosing.find(d => d.chemicalId === 'pac');
+
+    const updatedDosing = plantState.emergencyDosing.map(d => {
+      if (d.chemicalType === 'carbon_source') {
+        return { ...d, isActive: !!carbonDosing, dosage: carbonDosing?.dosage || 0 };
+      }
+      if (d.chemicalType === 'flocculant') {
+        return { ...d, isActive: !!pacDosing, dosage: pacDosing?.dosage || 0 };
+      }
+      return d;
     });
 
     usePlantStore.setState({
       treatmentLines: updatedLines,
       equipment: updatedEquipment,
+      emergencyDosing: updatedDosing,
       totalInletFlow: totalInflow,
+      dispatchLocked: true,
     });
 
     usePlantStore.getState().updatePipelineConnections();
@@ -288,7 +320,18 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
       .map(a => lineToTankMap[a.lineId])
       .filter(Boolean);
 
+    const anyLineActive = selectedStrategy.lineActivation.some(a => a.active);
     const backupActive = selectedStrategy.lineActivation.some(a => a.active && a.lineId === 'line-backup');
+
+    const isBranchPipe = (pipe: typeof pipelineConnections[0]) => {
+      const fromIsTank = pipe.fromUnit.startsWith('bio-tank');
+      const toIsTank = pipe.toUnit.startsWith('bio-tank');
+      return fromIsTank || toIsTank;
+    };
+
+    const isMainPipe = (pipe: typeof pipelineConnections[0]) => {
+      return pipe.type === 'normal' && !isBranchPipe(pipe);
+    };
 
     pipelineConnections.forEach((pipe) => {
       if (pipe.type === 'emergency') return;
@@ -296,10 +339,18 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
       const isBackupPipe = pipe.type === 'backup';
       const fromTankActive = activeTankIds.includes(pipe.fromUnit);
       const toTankActive = activeTankIds.includes(pipe.toUnit);
-      const isMainPath = pipe.type === 'normal' && !['bio-tank-1', 'bio-tank-2', 'bio-tank-backup'].includes(pipe.toUnit);
 
       if (isBackupPipe && !backupActive) return;
-      if (!isBackupPipe && !isMainPath && !fromTankActive && !toTankActive) return;
+
+      let shouldInclude = false;
+
+      if (isMainPipe(pipe)) {
+        shouldInclude = anyLineActive;
+      } else {
+        shouldInclude = fromTankActive || toTankActive;
+      }
+
+      if (!shouldInclude) return;
 
       const path: [number, number, number][] = [pipe.fromPosition];
       path.push(...pipe.waypoints);

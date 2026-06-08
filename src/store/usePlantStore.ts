@@ -18,6 +18,7 @@ interface PlantState {
   isSimulationRunning: boolean;
   totalPowerConsumption: number;
   totalInletFlow: number;
+  dispatchLocked: boolean;
   setSelectedUnitId: (id: string | null) => void;
   updateWaterQuality: () => void;
   updateEquipment: () => void;
@@ -36,7 +37,26 @@ interface PlantState {
   checkAndCreateMaintenanceOrders: () => void;
   updatePipelineConnections: () => void;
   getActivePipelineConnections: () => PipelineConnection[];
+  setDispatchLocked: (locked: boolean) => void;
 }
+
+const lineToBlowerMap: Record<string, string> = {
+  'line-1': 'blower-1',
+  'line-2': 'blower-2',
+  'line-backup': 'blower-3',
+};
+
+const blowerToLineMap: Record<string, string> = {
+  'blower-1': 'line-1',
+  'blower-2': 'line-2',
+  'blower-3': 'line-backup',
+};
+
+const lineToTankMap: Record<string, string> = {
+  'line-1': 'bio-tank-1',
+  'line-2': 'bio-tank-2',
+  'line-backup': 'bio-tank-backup',
+};
 
 const isPointInBox = (
   point: [number, number, number],
@@ -67,6 +87,9 @@ export const usePlantStore = create<PlantState>((set, get) => ({
   isSimulationRunning: true,
   totalPowerConsumption: initialEquipment.reduce((sum, eq) => sum + eq.powerConsumption, 0),
   totalInletFlow: initialProcessUnits.find((u) => u.type === 'inlet')?.outletWater.flow || 0,
+  dispatchLocked: false,
+
+  setDispatchLocked: (locked) => set({ dispatchLocked: locked }),
 
   setSelectedUnitId: (id) => set({ selectedUnitId: id }),
 
@@ -152,7 +175,7 @@ export const usePlantStore = create<PlantState>((set, get) => ({
   },
 
   updateEquipment: () => {
-    const { equipment } = get();
+    const { equipment, dispatchLocked } = get();
     const increment = simulationConfig.equipment.runHoursIncrement * get().simulationSpeed;
 
     const updatedEquipment = equipment.map((eq) => {
@@ -162,7 +185,7 @@ export const usePlantStore = create<PlantState>((set, get) => ({
       if (eq.status === 'running') {
         newRunHours += increment;
 
-        if (eq.type === 'blower' && eq.frequency !== undefined) {
+        if (eq.type === 'blower' && eq.frequency !== undefined && !dispatchLocked) {
           const targetFreq = 45 + Math.sin(Date.now() / 5000) * 10;
           newFrequency = lerp(eq.frequency, targetFreq, 0.1);
           newFrequency = clamp(newFrequency, simulationConfig.equipment.blowerFrequency.min, simulationConfig.equipment.blowerFrequency.max);
@@ -233,7 +256,9 @@ export const usePlantStore = create<PlantState>((set, get) => ({
   },
 
   updateTreatmentLines: () => {
-    const { treatmentLines, processUnits } = get();
+    const { dispatchLocked, treatmentLines, processUnits } = get();
+    if (dispatchLocked) return;
+
     const inletUnit = processUnits.find((u) => u.type === 'inlet');
     const totalFlow = inletUnit?.outletWater.flow || 0;
 
@@ -407,14 +432,20 @@ export const usePlantStore = create<PlantState>((set, get) => ({
     const { treatmentLines } = get();
     const activeTankIds = treatmentLines
       .filter(l => l.isActive)
-      .map(l => {
-        if (l.id === 'line-1') return 'bio-tank-1';
-        if (l.id === 'line-2') return 'bio-tank-2';
-        if (l.id === 'line-backup') return 'bio-tank-backup';
-        return null;
-      })
+      .map(l => lineToTankMap[l.id])
       .filter(Boolean) as string[];
+    const anyLineActive = treatmentLines.some(l => l.isActive);
     const backupActive = treatmentLines.some(l => l.isBackup && l.isActive);
+
+    const isBranchPipe = (conn: PipelineConnection) => {
+      const fromIsTank = conn.fromUnit.startsWith('bio-tank');
+      const toIsTank = conn.toUnit.startsWith('bio-tank');
+      return fromIsTank || toIsTank;
+    };
+
+    const isMainPipe = (conn: PipelineConnection) => {
+      return conn.type === 'normal' && !isBranchPipe(conn);
+    };
 
     set((state) => {
       const updatedConnections = state.pipelineConnections.map((conn) => {
@@ -422,7 +453,6 @@ export const usePlantStore = create<PlantState>((set, get) => ({
         const isEmergency = conn.type === 'emergency';
         const fromTankActive = activeTankIds.includes(conn.fromUnit);
         const toTankActive = activeTankIds.includes(conn.toUnit);
-        const isMainPath = conn.type === 'normal' && !['bio-tank-1', 'bio-tank-2', 'bio-tank-backup'].includes(conn.toUnit);
 
         if (isBackup) {
           return { ...conn, isActive: backupActive };
@@ -432,8 +462,8 @@ export const usePlantStore = create<PlantState>((set, get) => ({
           return conn;
         }
 
-        if (isMainPath) {
-          return { ...conn, isActive: true };
+        if (isMainPipe(conn)) {
+          return { ...conn, isActive: anyLineActive };
         }
 
         return { ...conn, isActive: fromTankActive || toTankActive };

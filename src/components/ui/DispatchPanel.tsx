@@ -176,7 +176,7 @@ const DispatchPanel = ({ onClose }: DispatchPanelProps) => {
     cancelPreview,
   } = useDispatchStore();
 
-  const { treatmentLines } = usePlantStore();
+  const { treatmentLines, setDispatchLocked } = usePlantStore();
   const [customScenario, setCustomScenario] = useState({
     inflow: 250,
     codLoad: 350,
@@ -184,6 +184,7 @@ const DispatchPanel = ({ onClose }: DispatchPanelProps) => {
   });
 
   const handleScenarioSelect = (s: DispatchScenario) => {
+    setDispatchLocked(false);
     setScenario(s);
     setCustomScenario({
       inflow: s.inflow,
@@ -193,6 +194,7 @@ const DispatchPanel = ({ onClose }: DispatchPanelProps) => {
   };
 
   const handleGenerateStrategies = () => {
+    setDispatchLocked(false);
     const currentScenario: DispatchScenario = {
       id: scenario?.id || 'custom',
       name: scenario?.name || '自定义场景',

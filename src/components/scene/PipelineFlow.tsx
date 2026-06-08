@@ -32,24 +32,26 @@ const PipeSegment = ({ start, end, color, type, isActive, showFlow = true }: Pip
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
   }, [start, end]);
 
-  const rotation = useMemo(() => {
+  const direction = useMemo(() => {
     const dx = end[0] - start[0];
     const dy = end[1] - start[1];
     const dz = end[2] - start[2];
-
-    const yaw = Math.atan2(dx, dz);
-    const pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
-
-    return [pitch, yaw, 0] as [number, number, number];
+    return new THREE.Vector3(dx, dy, dz).normalize();
   }, [start, end]);
+
+  const quaternion = useMemo(() => {
+    const quat = new THREE.Quaternion();
+    quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    return quat;
+  }, [direction]);
 
   const particlesGeometry = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(30 * 3);
     for (let i = 0; i < 30; i++) {
       positions[i * 3] = 0;
-      positions[i * 3 + 1] = 0;
-      positions[i * 3 + 2] = (i / 30) * length - length / 2;
+      positions[i * 3 + 1] = (i / 30) * length - length / 2;
+      positions[i * 3 + 2] = 0;
     }
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     return geometry;
@@ -59,10 +61,10 @@ const PipeSegment = ({ start, end, color, type, isActive, showFlow = true }: Pip
     if (particlesRef.current && isActive && showFlow) {
       const positions = particlesRef.current.geometry.attributes.position.array as Float32Array;
       for (let i = 0; i < 30; i++) {
-        let z = positions[i * 3 + 2];
-        z += 0.08;
-        if (z > length / 2) z = -length / 2;
-        positions[i * 3 + 2] = z;
+        let y = positions[i * 3 + 1];
+        y += 0.08;
+        if (y > length / 2) y = -length / 2;
+        positions[i * 3 + 1] = y;
       }
       particlesRef.current.geometry.attributes.position.needsUpdate = true;
     }
@@ -81,7 +83,7 @@ const PipeSegment = ({ start, end, color, type, isActive, showFlow = true }: Pip
   const isDashed = type === 'backup';
 
   return (
-    <group position={midPoint} rotation={rotation}>
+    <group position={midPoint} quaternion={quaternion}>
       <mesh ref={meshRef}>
         <cylinderGeometry args={[pipeRadius, pipeRadius, length, 8]} />
         {isDashed ? (
@@ -160,6 +162,12 @@ const FlowArrow = ({
     return { direction: dir, midPoint: mid };
   }, [start, end, offset]);
 
+  const quaternion = useMemo(() => {
+    const quat = new THREE.Quaternion();
+    quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    return quat;
+  }, [direction]);
+
   useFrame((state) => {
     if (groupRef.current && isActive) {
       groupRef.current.position.y = midPoint.y + Math.sin(state.clock.elapsedTime * 3) * 0.15;
@@ -168,7 +176,7 @@ const FlowArrow = ({
 
   if (!arrowHelperRef.current) {
     arrowHelperRef.current = new THREE.ArrowHelper(
-      direction,
+      new THREE.Vector3(0, 1, 0),
       new THREE.Vector3(0, 0, 0),
       0.8,
       new THREE.Color(color),
@@ -178,7 +186,7 @@ const FlowArrow = ({
   }
 
   return (
-    <group ref={groupRef} position={midPoint}>
+    <group ref={groupRef} position={midPoint} quaternion={quaternion}>
       <primitive object={arrowHelperRef.current} />
     </group>
   );
@@ -213,25 +221,25 @@ const PipelineFlow = () => {
         return (
           <group key={conn.id}>
             {allPoints.slice(0, -1).map((point, index) => (
-              <PipeSegment
-                key={`${conn.id}-${index}`}
-                start={point}
-                end={allPoints[index + 1]}
-                color={color}
-                type={conn.type}
-                isActive={conn.isActive}
-              />
+              <group key={`${conn.id}-${index}`}>
+                <PipeSegment
+                  start={point}
+                  end={allPoints[index + 1]}
+                  color={color}
+                  type={conn.type}
+                  isActive={conn.isActive}
+                />
+                {conn.isActive && (
+                  <FlowArrow
+                    start={point}
+                    end={allPoints[index + 1]}
+                    color={color}
+                    isActive={conn.isActive}
+                    offset={0.3}
+                  />
+                )}
+              </group>
             ))}
-
-            {conn.isActive && (
-              <FlowArrow
-                start={conn.fromPosition}
-                end={conn.toPosition}
-                color={color}
-                isActive={conn.isActive}
-                offset={0.5}
-              />
-            )}
           </group>
         );
       })}
@@ -239,22 +247,23 @@ const PipelineFlow = () => {
       {backupLineActive && backupLine?.switchPath && backupLine.switchPath.length > 1 && (
         <group>
           {backupLine.switchPath.slice(0, -1).map((point, index) => (
-            <PipeSegment
-              key={`backup-switch-${index}`}
-              start={point}
-              end={backupLine.switchPath![index + 1]}
-              color="#34c759"
-              type="backup"
-              isActive={true}
-            />
+            <group key={`backup-switch-${index}`}>
+              <PipeSegment
+                start={point}
+                end={backupLine.switchPath![index + 1]}
+                color="#34c759"
+                type="backup"
+                isActive={true}
+              />
+              <FlowArrow
+                start={point}
+                end={backupLine.switchPath![index + 1]}
+                color="#34c759"
+                isActive={true}
+                offset={0.5}
+              />
+            </group>
           ))}
-          <FlowArrow
-            start={backupLine.switchPath[0]}
-            end={backupLine.switchPath[backupLine.switchPath.length - 1]}
-            color="#34c759"
-            isActive={true}
-            offset={1}
-          />
         </group>
       )}
 
@@ -262,24 +271,23 @@ const PipelineFlow = () => {
         dosing.isActive ? (
           <group key={dosing.id}>
             {dosing.pipelinePath.slice(0, -1).map((point, index) => (
-              <PipeSegment
-                key={`emergency-${dosing.id}-${index}`}
-                start={point}
-                end={dosing.pipelinePath[index + 1]}
-                color="#ff3b30"
-                type="emergency"
-                isActive={true}
-              />
+              <group key={`emergency-${dosing.id}-${index}`}>
+                <PipeSegment
+                  start={point}
+                  end={dosing.pipelinePath[index + 1]}
+                  color="#ff3b30"
+                  type="emergency"
+                  isActive={true}
+                />
+                <FlowArrow
+                  start={point}
+                  end={dosing.pipelinePath[index + 1]}
+                  color="#ff3b30"
+                  isActive={true}
+                  offset={0.5}
+                />
+              </group>
             ))}
-            {dosing.pipelinePath.length > 1 && (
-              <FlowArrow
-                start={dosing.pipelinePath[0]}
-                end={dosing.pipelinePath[dosing.pipelinePath.length - 1]}
-                color="#ff3b30"
-                isActive={true}
-                offset={1}
-              />
-            )}
           </group>
         ) : null
       )}
